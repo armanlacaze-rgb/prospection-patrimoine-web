@@ -3,15 +3,15 @@
 import { useState } from 'react'
 import { ModeToggle } from '@/components/ModeToggle'
 import { StatsBar } from '@/components/StatsBar'
-import { UploadStep } from '@/components/standard/UploadStep'
-import { ScoringStep } from '@/components/standard/ScoringStep'
+import { StandardSearchStep } from '@/components/standard/StandardSearchStep'
+import { StandardSearchingStep } from '@/components/standard/StandardSearchingStep'
 import { SearchStep } from '@/components/premium/SearchStep'
 import { SearchingStep } from '@/components/premium/SearchingStep'
 import { ResultsStep } from '@/components/shared/ResultsStep'
-import type { Mode, Step, Stats, ProspectInput, ProspectScored, SearchCriteria } from '@/lib/types'
+import type { Mode, Step, Stats, ProspectScored, SearchCriteria, StandardSearchCriteria } from '@/lib/types'
 
 const STEP_LABELS: Record<Mode, string[]> = {
-  standard: ['Import CSV', 'Scoring IA', 'Résultats'],
+  standard: ['Critères', 'Recherche IA', 'Résultats'],
   premium: ['Critères', 'Recherche IA', 'Résultats'],
 }
 
@@ -51,22 +51,22 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>('standard')
   const [step, setStep] = useState<Step>(1)
   const [stats, setStats] = useState<Stats>({ loaded: 0, qualified: 0, avgScore: 0, messages: 0 })
-  const [prospects, setProspects] = useState<ProspectInput[]>([])
   const [results, setResults] = useState<ProspectScored[]>([])
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria | null>(null)
+  const [standardCriteria, setStandardCriteria] = useState<StandardSearchCriteria | null>(null)
 
   function handleModeChange(newMode: Mode) {
     setMode(newMode)
     setStep(1)
     setStats({ loaded: 0, qualified: 0, avgScore: 0, messages: 0 })
-    setProspects([])
     setResults([])
     setSearchCriteria(null)
+    setStandardCriteria(null)
   }
 
-  function handleProspectsLoaded(loaded: ProspectInput[]) {
-    setProspects(loaded)
-    setStats((s) => ({ ...s, loaded: loaded.length }))
+  function handleStandardSearch(criteria: StandardSearchCriteria) {
+    setStandardCriteria(criteria)
+    setStats((s) => ({ ...s, loaded: criteria.limit }))
     setStep(2)
   }
 
@@ -87,9 +87,9 @@ export default function Home() {
   function handleRestart() {
     setStep(1)
     setStats({ loaded: 0, qualified: 0, avgScore: 0, messages: 0 })
-    setProspects([])
     setResults([])
     setSearchCriteria(null)
+    setStandardCriteria(null)
   }
 
   return (
@@ -113,11 +113,11 @@ export default function Home() {
         <div className="border-t pt-6">
           {/* Mode Standard */}
           {mode === 'standard' && step === 1 && (
-            <UploadStep onProspectsLoaded={handleProspectsLoaded} />
+            <StandardSearchStep onSearch={handleStandardSearch} />
           )}
-          {mode === 'standard' && step === 2 && (
-            <ScoringStep
-              prospects={prospects}
+          {mode === 'standard' && step === 2 && standardCriteria && (
+            <StandardSearchingStep
+              criteria={standardCriteria}
               onComplete={handleScoringComplete}
               onStatsUpdate={handleStatsUpdate}
             />

@@ -43,3 +43,10 @@ export interface SearchCriteria {
   event_types: Array<'heritage' | 'cession' | 'changement_poste'>
   limit: number
 }
+
+export interface StandardSearchCriteria {
+  sectors: string[]   // keys from PATRIMOINE_SECTORS in lib/pappers.ts
+  regions: string[]   // region names mapped to dept codes
+  ca_min_m?: number   // minimum CA in millions€ (optional filter)
+  limit: number       // max qualified prospects to return (default 50)
+}
