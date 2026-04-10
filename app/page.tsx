@@ -1,65 +1,148 @@
-import Image from "next/image";
+// app/page.tsx
+'use client'
+import { useState } from 'react'
+import { ModeToggle } from '@/components/ModeToggle'
+import { StatsBar } from '@/components/StatsBar'
+import { UploadStep } from '@/components/standard/UploadStep'
+import { ScoringStep } from '@/components/standard/ScoringStep'
+import { SearchStep } from '@/components/premium/SearchStep'
+import { SearchingStep } from '@/components/premium/SearchingStep'
+import { ResultsStep } from '@/components/shared/ResultsStep'
+import type { Mode, Step, Stats, ProspectInput, ProspectScored, SearchCriteria } from '@/lib/types'
+
+const STEP_LABELS: Record<Mode, string[]> = {
+  standard: ['Import CSV', 'Scoring IA', 'Résultats'],
+  premium: ['Critères', 'Recherche IA', 'Résultats'],
+}
+
+function StepIndicator({ mode, step }: { mode: Mode; step: Step }) {
+  const labels = STEP_LABELS[mode]
+  return (
+    <div className="flex items-center gap-2">
+      {labels.map((label, i) => {
+        const n = (i + 1) as Step
+        const active = step === n
+        const done = step > n
+        return (
+          <div key={i} className="flex items-center gap-2">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+              active ? 'bg-blue-600 text-white' :
+              done ? 'bg-green-100 text-green-700' :
+              'bg-gray-100 text-gray-400'
+            }`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
+                active ? 'bg-white text-blue-600' :
+                done ? 'bg-green-500 text-white' :
+                'bg-gray-300 text-gray-500'
+              }`}>
+                {done ? '✓' : n}
+              </span>
+              {label}
+            </div>
+            {i < 2 && <div className="w-6 h-px bg-gray-300" />}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function Home() {
+  const [mode, setMode] = useState<Mode>('standard')
+  const [step, setStep] = useState<Step>(1)
+  const [stats, setStats] = useState<Stats>({ loaded: 0, qualified: 0, avgScore: 0, messages: 0 })
+  const [prospects, setProspects] = useState<ProspectInput[]>([])
+  const [results, setResults] = useState<ProspectScored[]>([])
+  const [searchCriteria, setSearchCriteria] = useState<SearchCriteria | null>(null)
+
+  function handleModeChange(newMode: Mode) {
+    setMode(newMode)
+    setStep(1)
+    setStats({ loaded: 0, qualified: 0, avgScore: 0, messages: 0 })
+    setProspects([])
+    setResults([])
+    setSearchCriteria(null)
+  }
+
+  function handleProspectsLoaded(loaded: ProspectInput[]) {
+    setProspects(loaded)
+    setStats((s) => ({ ...s, loaded: loaded.length }))
+    setStep(2)
+  }
+
+  function handleSearch(criteria: SearchCriteria) {
+    setSearchCriteria(criteria)
+    setStep(2)
+  }
+
+  function handleScoringComplete(qualified: ProspectScored[]) {
+    setResults(qualified)
+    setStep(3)
+  }
+
+  function handleStatsUpdate(qualified: number, avgScore: number, messages: number) {
+    setStats((s) => ({ ...s, qualified, avgScore, messages }))
+  }
+
+  function handleRestart() {
+    setStep(1)
+    setStats({ loaded: 0, qualified: 0, avgScore: 0, messages: 0 })
+    setProspects([])
+    setResults([])
+    setSearchCriteria(null)
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Prospection Patrimoine IA</h1>
+          <p className="text-sm text-gray-500">Qualification automatique de prospects B2B</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+        <ModeToggle mode={mode} onChange={handleModeChange} />
+      </div>
+
+      {/* Stats */}
+      <StatsBar stats={stats} />
+
+      {/* Stepper */}
+      <div className="bg-white rounded-2xl border shadow-sm p-6 space-y-6">
+        <StepIndicator mode={mode} step={step} />
+
+        <div className="border-t pt-6">
+          {/* Mode Standard */}
+          {mode === 'standard' && step === 1 && (
+            <UploadStep onProspectsLoaded={handleProspectsLoaded} />
+          )}
+          {mode === 'standard' && step === 2 && (
+            <ScoringStep
+              prospects={prospects}
+              onComplete={handleScoringComplete}
+              onStatsUpdate={handleStatsUpdate}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
+
+          {/* Mode Premium */}
+          {mode === 'premium' && step === 1 && (
+            <SearchStep onSearch={handleSearch} />
+          )}
+          {mode === 'premium' && step === 2 && searchCriteria && (
+            <SearchingStep
+              criteria={searchCriteria}
+              onComplete={handleScoringComplete}
+              onStatsUpdate={handleStatsUpdate}
+            />
+          )}
+
+          {/* Résultats (partagé) */}
+          {step === 3 && (
+            <ResultsStep prospects={results} onRestart={handleRestart} />
+          )}
         </div>
-      </main>
-    </div>
-  );
+      </div>
+
+      <p className="text-center text-xs text-gray-400">Propulsé par Claude · Anthropic</p>
+    </main>
+  )
 }
