@@ -25,9 +25,7 @@ const PROSPECTS: ProspectScored[] = [
 describe('generateCSV', () => {
   it('génère un CSV avec les bonnes colonnes', () => {
     const csv = generateCSV(PROSPECTS)
-    expect(csv).toContain(
-      'Prénom,Nom,Titre,Entreprise,Secteur,CA (M€),Effectifs,Localisation,Score,Signaux,Message LinkedIn,Email,LinkedIn URL'
-    )
+    expect(csv.split('\n')[0]).toBe('Prénom,Nom,Titre,Entreprise,Secteur,CA (M€),Score,Signaux,Message LinkedIn,Effectifs,Localisation,Email,LinkedIn URL')
     expect(csv).toContain('Thomas')
     expect(csv).toContain('Marchand BTP')
     expect(csv).toContain('9.2')
