@@ -3,58 +3,22 @@
 // Two-step: /v2/recherche (0.1 credit/result) → /v2/entreprise (1 credit/fiche)
 
 import type { ProspectInput, StandardSearchCriteria } from './types'
+import type { PappersFilters } from './settings'
 
 const BASE_URL = 'https://api.pappers.fr/v2'
 
-// ─── Sector → NAF codes mapping ───────────────────────────────────────────────
-// Sectors where individuals typically accumulate significant personal wealth
-export const PATRIMOINE_SECTORS: Record<string, { label: string; nafCodes: string[] }> = {
-  medical: {
-    label: 'Médical',
-    nafCodes: ['86.21Z', '86.22A', '86.22B', '86.22C', '86.23Z', '86.90A', '86.90F'],
-  },
-  juridique: {
-    label: 'Juridique',
-    nafCodes: ['69.10Z'],
-  },
-  expertise: {
-    label: 'Expertise-comptable',
-    nafCodes: ['69.20Z'],
-  },
-  immobilier: {
-    label: 'Immobilier',
-    nafCodes: ['68.10Z', '68.20A', '68.20B', '68.31Z'],
-  },
-  finance: {
-    label: 'Finance / Conseil',
-    nafCodes: ['64.19Z', '64.20Z', '64.30Z', '64.91Z', '64.99Z', '66.30Z', '70.22Z'],
-  },
-  tech: {
-    label: 'Tech / IT',
-    nafCodes: ['62.01Z', '62.02A', '62.09Z'],
-  },
-  industrie: {
-    label: 'Industrie',
-    nafCodes: ['28.11Z', '28.12Z', '28.13Z', '28.14Z', '28.15Z'],
-  },
-  pharmacie: {
-    label: 'Pharmacie',
-    nafCodes: ['47.73Z'],
-  },
-}
-
-// ─── Region → department codes ────────────────────────────────────────────────
+// Region → department codes (for geo filtering in Pappers API)
 export const REGION_DEPTS: Record<string, string[]> = {
-  Paris: ['75', '92', '93', '94', '77', '78', '91', '95'],
-  Lyon: ['69'],
-  Marseille: ['13'],
-  Bordeaux: ['33'],
-  Toulouse: ['31'],
-  Nantes: ['44'],
-  Lille: ['59'],
-  Strasbourg: ['67'],
-  Rennes: ['35'],
-  Nice: ['06'],
+  Paris:       ['75', '92', '93', '94', '77', '78', '91', '95'],
+  Lyon:        ['69'],
+  Marseille:   ['13'],
+  Bordeaux:    ['33'],
+  Toulouse:    ['31'],
+  Nantes:      ['44'],
+  Lille:       ['59'],
+  Strasbourg:  ['67'],
+  Rennes:      ['35'],
+  Nice:        ['06'],
 }
 
 // ─── Internal Pappers API types ────────────────────────────────────────────────
@@ -113,11 +77,20 @@ function ancienneteAns(dateCreation?: string): number {
   return (Date.now() - new Date(dateCreation).getTime()) / (1000 * 60 * 60 * 24 * 365)
 }
 
-function passeLesFiltres(e: PappersResult): boolean {
+function passeLesFiltres(e: PappersResult, filters: PappersFilters): boolean {
   if (e.entreprise_cessee) return false
-  if (e.procedures_collectives && e.procedures_collectives.length > 0) return false
+  if (filters.exclureProcedures && e.procedures_collectives && e.procedures_collectives.length > 0) return false
   const ans = ancienneteAns(e.date_creation)
-  if (ans < 2) return false
+  if (ans < filters.ancienneteMinAns) return false
+  if (filters.ancienneteMaxAns > 0 && ans > filters.ancienneteMaxAns) return false
+  if (filters.effectifMax > 0) {
+    const effMin = e.effectif_min ?? 0
+    if (effMin > filters.effectifMax) return false
+  }
+  if (filters.effectifMin > 0) {
+    const effMax = e.effectif_max ?? 0
+    if (effMax > 0 && effMax < filters.effectifMin) return false
+  }
   return true
 }
 
@@ -145,50 +118,51 @@ function extractDirigeant(fiche: PappersFiche) {
   if (!d) return null
   return {
     prenom: d.prenom ?? d.prenom_usuel ?? '',
-    nom: d.nom ?? d.nom_usage ?? '',
-    titre: d.qualite ?? d.titre ?? 'Dirigeant',
+    nom:    d.nom ?? d.nom_usage ?? '',
+    titre:  d.qualite ?? d.titre ?? 'Dirigeant',
   }
-}
-
-function sectorLabelForNaf(nafCode: string): string {
-  for (const sector of Object.values(PATRIMOINE_SECTORS)) {
-    if (sector.nafCodes.includes(nafCode)) return sector.label
-  }
-  return 'PME'
 }
 
 // ─── Main export: async generator ────────────────────────────────────────────
 // Yields ProspectInput one by one as Pappers returns them.
-// The caller (SSE route) can stop iteration when enough qualified prospects found.
+// The caller (SSE route) stops iteration when enough qualified prospects are found.
 export async function* searchPappers(
   criteria: StandardSearchCriteria,
   apiKey: string,
 ): AsyncGenerator<ProspectInput> {
+  const { settings } = criteria
+
+  // Determine which sectors to search
+  const enabledSectorKeys = Object.entries(settings.sectors)
+    .filter(([, s]) => s.enabled)
+    .map(([key]) => key)
+
   const sectorKeys =
-    criteria.sectors.length > 0 ? criteria.sectors : Object.keys(PATRIMOINE_SECTORS)
+    criteria.sectors.length > 0
+      ? criteria.sectors.filter((key) => settings.sectors[key]?.enabled)
+      : enabledSectorKeys
 
   const departements: string[] =
     criteria.regions.length > 0
       ? criteria.regions.flatMap((r) => REGION_DEPTS[r] ?? [])
       : []
 
-  // We search up to 4× the limit in raw candidates (most won't qualify scoring)
+  // Search up to 4× the limit in raw candidates (most won't score high enough)
   const maxCandidates = criteria.limit * 4
-
   let candidatesFound = 0
 
   outer: for (const sectorKey of sectorKeys) {
-    const sector = PATRIMOINE_SECTORS[sectorKey]
-    if (!sector) continue
+    const sectorConfig = settings.sectors[sectorKey]
+    if (!sectorConfig?.enabled || sectorConfig.nafCodes.length === 0) continue
 
-    for (const nafCode of sector.nafCodes) {
+    for (const nafCode of sectorConfig.nafCodes) {
       for (let page = 1; page <= 3; page++) {
         if (candidatesFound >= maxCandidates) break outer
 
         const params: Record<string, string | number> = {
           api_token: apiKey,
-          code_naf: nafCode,
-          par_page: 20,
+          code_naf:  nafCode,
+          par_page:  20,
           page,
           precision: 'standard',
         }
@@ -198,9 +172,9 @@ export async function* searchPappers(
 
         const data = await fetchPappers<{ resultats: PappersResult[] }>('/recherche', params)
         const resultats = data?.resultats ?? []
-        if (resultats.length === 0) break // no more pages for this NAF
+        if (resultats.length === 0) break // no more pages for this NAF code
 
-        const candidats = resultats.filter(passeLesFiltres)
+        const candidats = resultats.filter((e) => passeLesFiltres(e, settings.filters))
 
         for (const candidat of candidats) {
           if (candidatesFound >= maxCandidates) break outer
@@ -209,7 +183,7 @@ export async function* searchPappers(
 
           const fiche = await fetchPappers<PappersFiche>('/entreprise', {
             api_token: apiKey,
-            siren: candidat.siren,
+            siren:     candidat.siren,
           })
           if (!fiche) continue
 
@@ -220,17 +194,17 @@ export async function* searchPappers(
           if (criteria.ca_min_m && caM !== undefined && caM < criteria.ca_min_m) continue
 
           const ville = candidat.siege?.ville ?? fiche.siege?.ville ?? ''
-          const cp = candidat.siege?.code_postal ?? fiche.siege?.code_postal ?? ''
+          const cp    = candidat.siege?.code_postal ?? fiche.siege?.code_postal ?? ''
 
           yield {
-            first_name: dirigeant.prenom,
-            last_name: dirigeant.nom,
-            job_title: dirigeant.titre,
+            first_name:   dirigeant.prenom,
+            last_name:    dirigeant.nom,
+            job_title:    dirigeant.titre,
             company_name: candidat.nom_entreprise ?? candidat.denomination ?? fiche.nom_entreprise ?? fiche.denomination ?? '',
-            sector: sectorLabelForNaf(nafCode),
-            revenue_m: caM,
-            employees: fiche.effectif ? parseInt(fiche.effectif) || undefined : undefined,
-            location: ville ? `${ville}${cp ? ` (${cp.slice(0, 2)})` : ''}` : undefined,
+            sector:       sectorConfig.label,
+            revenue_m:    caM,
+            employees:    fiche.effectif ? parseInt(fiche.effectif) || undefined : undefined,
+            location:     ville ? `${ville}${cp ? ` (${cp.slice(0, 2)})` : ''}` : undefined,
           }
 
           candidatesFound++

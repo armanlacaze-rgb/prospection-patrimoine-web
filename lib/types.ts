@@ -44,9 +44,13 @@ export interface SearchCriteria {
   limit: number
 }
 
+import type { PappersSettings } from './settings'
+export type { PappersSettings }
+
 export interface StandardSearchCriteria {
-  sectors: string[]   // keys from PATRIMOINE_SECTORS in lib/pappers.ts
-  regions: string[]   // region names mapped to dept codes
-  ca_min_m?: number   // minimum CA in millions€ (optional filter)
-  limit: number       // max qualified prospects to return (default 50)
+  sectors: string[]         // selected sector keys (subset of settings.sectors)
+  regions: string[]         // region names mapped to dept codes
+  ca_min_m?: number         // minimum CA in millions€ (optional filter)
+  limit: number             // max qualified prospects to return (default 50)
+  settings: PappersSettings // full Pappers config (sectors + filters)
 }
